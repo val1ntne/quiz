@@ -6,6 +6,16 @@ const photoSource='https://www.archives.gov/research/still-pictures/highlights/u
 let language='vi';
 try{const saved=localStorage.getItem('history-language');if(saved==='vi'||saved==='en')language=saved;}catch{}
 const games={vi:newGame(),en:newGame()};
+try{const saved=JSON.parse(sessionStorage.getItem('ww2-crosswords-v1'));
+ for(const lang of ['vi','en']){const g=saved?.[lang];if(!g||!Number.isInteger(g.active)||g.active<0||g.active>6)continue;
+ if(!['drafts','solved','hints'].every(k=>Array.isArray(g[k])&&g[k].length===7)||!g.drafts.every(x=>typeof x==='string')||!g.solved.every(x=>typeof x==='boolean')||!g.hints.every(x=>typeof x==='boolean'))continue;
+ g.solved=g.solved.map((done,i)=>done&&normalize(g.drafts[i])===puzzles[lang].questions[i].normalized);g.revealed=!!g.revealed&&g.solved.every(Boolean);games[lang]=g;}
+}catch{}
+function saveGames(){try{sessionStorage.setItem('ww2-crosswords-v1',JSON.stringify(games));}catch{}}
+window.addEventListener('pagehide',saveGames);
+document.addEventListener('click',()=>queueMicrotask(saveGames));
+document.addEventListener('input',()=>queueMicrotask(saveGames));
+
 const current=()=>games[language],puzzle=()=>puzzles[language],t=k=>messages[language][k];
 const input=$('#answer'),grid=$('#crossword'),nav=$('#question-nav'),feedback=$('#feedback');
 const reduced=matchMedia('(prefers-reduced-motion: reduce)');
@@ -53,7 +63,7 @@ async function startReveal(lead=380){
  const controller=new AbortController();revealController=controller;
  const finished=await revealColumn(grid.querySelectorAll('.key-cell'),{reduced:reduced.matches,signal:controller.signal,lead});
  if(!finished||controller.signal.aborted||language!==lang||current()!==g)return;
- revealController=null;g.revealed=true;renderProgress();
+ revealController=null;g.revealed=true;renderProgress();saveGames();
  if(!$('dialog[open]'))openDialog($('#complete-dialog'));
 }
 function renderPhoto(q,done){
@@ -72,7 +82,7 @@ function renderProgress(){
  for(let i=0;i<7;i++){const el=document.createElement('span');el.textContent=complete?normalize(p.keyword)[i]:'·';el.setAttribute('aria-hidden','true');preview.append(el);}
  $('#complete-title').textContent=p.keyword;$('.result-letters').replaceChildren(...[...normalize(p.keyword)].map(letter=>{const el=document.createElement('span');el.textContent=letter;return el;}));
 }
-function render(){makeBoard();renderQuestion();renderProgress();}
+function render(){makeBoard();renderQuestion();renderProgress();saveGames();}
 function select(i,focus){cancelReveal();const changed=current().active!==i;current().active=i;render();if(changed)motion($('.question-content'),[{opacity:.4,transform:'translateY(5px)'},{opacity:1,transform:'translateY(0)'}]);if(focus)(current().solved[i]?$('#question-title'):input).focus({preventScroll:true});}
 function translate(){document.documentElement.lang=language;document.title=t('title');$('meta[name="description"]').content=t('description');document.querySelectorAll('[data-i18n]').forEach(el=>el.textContent=t(el.dataset.i18n));document.querySelectorAll('[data-aria]').forEach(el=>el.setAttribute('aria-label',t(el.dataset.aria)));document.querySelectorAll('[data-lang]').forEach(el=>el.setAttribute('aria-pressed',el.dataset.lang===language));render();renderSources();}
 function renderSources(){const list=$('#sources-list');list.replaceChildren();const groups=new Map();puzzle().questions.forEach((q,i)=>{if(!groups.has(q.source))groups.set(q.source,{...q,numbers:[]});groups.get(q.source).numbers.push(i+1);});groups.forEach(q=>{const li=document.createElement('li'),a=document.createElement('a'),small=document.createElement('small');a.href=q.source;a.target='_blank';a.rel='noopener noreferrer';a.textContent=q.sourceName+' ↗';small.textContent=`${t('sourceFor')} ${q.numbers.join(', ')}`;li.append(a,small);list.append(li);});const photoItem=document.createElement('li'),photoLink=document.createElement('a');photoLink.href=photoSource;photoLink.target='_blank';photoLink.rel='noopener noreferrer';photoLink.textContent=t('photoCredit')+' ↗';photoItem.append(photoLink);list.append(photoItem);}
